@@ -4,9 +4,8 @@ local baud_rate = 115200
 local project_dir = vim.fn.expand("~/Desktop/robo/robo_esp")             -- python project dir
 local own_dir = vim.fn.expand("~/.config/nvim/lua/ranastra/neovim-ampy") -- dir of the ampy plugin
 _G.AmpyUseTerminal = ("true")                                            -- toggle if terminal is opened for runing a python file
-local debug_mode = false                                                  -- toggle to show ampy commands instead of running them
+local debug_mode = false                                                 -- toggle to show ampy commands instead of running them
 _G.AmpyAutoUpload = ("false")                                            -- toggle auto upload on save
-
 
 local run_target_location = own_dir .. "/run_target.py"
 
@@ -63,7 +62,7 @@ local function get_ignored_files()
 	end
 	local ignored_files = {}
 	for name in config_file:lines() do
-		table.insert(ignored_files, name)
+		table.insert(ignored_files, project_dir .. "/" .. name)
 	end
 	return ignored_files
 end
@@ -78,23 +77,23 @@ local function contains(table, value)
 	return false
 end
 
-local function ampy_upload_one(name)
+local function ampy_upload_one(filepath)
 	-- upload file to target
-	if contains(get_ignored_files(), name) then
-		print("ignoring file " .. name)
+	if contains(get_ignored_files(), filepath) then
+		print("ignoring file " .. filepath)
 		return
 	end
 	local ampy_assembled_command = string.format(
 		"ampy -p %s -b %s put %s 2>&1",
 		port,
 		baud_rate,
-		name
+		filepath
 	)
 	if debug_mode then
 		print(ampy_assembled_command)
 		return
 	end
-	print("uploading file " .. name)
+	print("uploading file " .. filepath)
 	local output = io.popen(ampy_assembled_command)
 	if not output then
 		print("Error something went wrong with " .. ampy_assembled_command)
