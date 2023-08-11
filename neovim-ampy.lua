@@ -3,60 +3,83 @@ local port = ("/dev/ttyUSB0")                                            -- port
 local baud_rate = 115200
 local project_dir = vim.fn.expand("~/Desktop/robo/robo_esp")             -- python project dir
 local own_dir = vim.fn.expand("~/.config/nvim/lua/ranastra/neovim-ampy") -- dir of the ampy plugin
-_G.AmpyUseTerminal = ("true")                                            -- toggle if terminal is opened for runing a python file
-local debug_mode = false                                                 -- toggle to show ampy commands instead of running them
+-- _G.AmpyUseTerminal = ("true")                                            -- toggle if terminal is opened for runing a python file
+local debug_mode = true                                                  -- toggle to show ampy commands instead of running them
 _G.AmpyAutoUpload = ("false")                                            -- toggle auto upload on save
+local sudo_password = nil                                                -- dont set that .....
+local password_mode = 2                                                  -- 1 ask for sudo password eveytime, 2 ask for password once per start of nvim, 3 specify password in this file
 
 local run_target_location = own_dir .. "/run_target.py"
 
+local function set_password()
+	-- set local sudo_password and will be called the first run_bash_command is called
+	vim.api.nvim_out_write("enter sudo password: ")
+	vim.api.nvim_command("startinsert")
+	sudo_password = vim.fn.input("")
+	vim.api.nvim_command("stopinsert")
+end
 
-local function set_target_entry(name)
+local function run_bash_command(cmd)
+	-- this should handle all cringeness of permission and opening terminals
+	-- write bash file
+	if debug_mode then
+		print(cmd)
+		return
+	end
+	local file = io.open(own_dir .. "/bash_run.sh", "w")
+	if not file then
+		print("could not create bash_run file")
+		return
+	end
+	file:write(cmd)
+	file:close()
+	-- run bash file
+	if password_mode == 1 then
+		local command = ":terminal sudo -S bash " .. own_dir .. "/bash_run.sh"
+		vim.api.nvim_command(command)
+	elseif password_mode == 2 then
+		if not sudo_password then
+			set_password()
+		end
+		local command = ":!echo " .. sudo_password .. " | sudo -S bash " .. own_dir .. "/bash_run.sh"
+		vim.api.nvim_command(command)
+	else
+		if not sudo_password then
+			print("no sudo password set in config, but mode specified")
+			return
+		end
+		local command = ":!echo " .. sudo_password .. " | sudo -S bash " .. own_dir .. "/bash_run.sh"
+		vim.api.nvim_command(command)
+	end
+end
+
+local function set_target_entry(filename)
 	-- set python file to import target file
+	-- filename without .py fileextension
 	local file = io.open(own_dir .. "/run_target.py", "w")
 	if not file then
 		print("could not open run_target.py")
 		return
 	end
-	file:write(string.format("import %s", name))
+	file:write(string.format("import %s", filename))
 	file:close()
 end
 
 local function run_python_file(filepath)
 	-- run python file on host
 	local ampy_assembled_command = string.format(
-		"ampy -p %s -b %s run %s 2>&1",
+		"ampy -p %s -b %s run %s",
 		port,
 		baud_rate,
 		filepath
 	)
-	if AmpyUseTerminal == "true" then
-		local term_command = string.format("term \"%s\"", ampy_assembled_command)
-		if debug_mode then
-			print(term_command)
-			return
-		end
-		vim.api.nvim_command(term_command)
-	else
-		if debug_mode then
-			print(ampy_assembled_command)
-			return
-		end
-		local file = io.popen(ampy_assembled_command)
-		if not file then
-			print("Error running target", ampy_assembled_command)
-			return
-		end
-		for line in file:lines() do
-			print(line)
-		end
-		file:close()
-	end
+	run_bash_command(ampy_assembled_command)
 end
 
 local function get_ignored_files()
 	-- read the pymakr.conf ... to hold compatibility with VS**** and pymakr extension
-	local config_file_path = project_dir .. "/pymakr.conf"
-	local config_file = io.popen("jq '.py_ignore[]' " .. config_file_path)
+	local jq_command = "jq -r '.py_ignore[]' " .. project_dir .. "/pymakr.conf 2>/dev/null"
+	local config_file = io.popen(jq_command, "r")
 	if not config_file then
 		return {}
 	end
@@ -84,22 +107,12 @@ local function ampy_upload_one(filepath)
 		return
 	end
 	local ampy_assembled_command = string.format(
-		"ampy -p %s -b %s put %s 2>&1",
+		"ampy -p %s -b %s put %s",
 		port,
 		baud_rate,
 		filepath
 	)
-	if debug_mode then
-		print(ampy_assembled_command)
-		return
-	end
-	print("uploading file " .. filepath)
-	local output = io.popen(ampy_assembled_command)
-	if not output then
-		print("Error something went wrong with " .. ampy_assembled_command)
-		return
-	end
-	for line in output:lines() do print(line) end
+	run_bash_command(ampy_assembled_command)
 end
 
 local function split_at(inpstring, sep)
@@ -122,44 +135,28 @@ end
 
 _G.ampy_erase_all = function()
 	-- remove all files from target
-	local remove_all_command = string.format("ampy -p %s -b %s rmdir -r / 2>&1", port, baud_rate)
-	if debug_mode then
-		print(remove_all_command)
-		return
-	end
-	local file = io.popen(remove_all_command)
-	if not file then
-		print("Error erasing files on the target")
-		return
-	end
-	for line in file:lines() do
-		print(line)
-	end
-	file:close()
+	local ampy_assembled_command = string.format(
+		"ampy -p %s -b %s rmdir -r / 2>&1",
+		port,
+		baud_rate
+	)
+	run_bash_command(ampy_assembled_command)
 end
 
 _G.ampy_erase_files = function(...)
-	local args = split_at(..., " ")
-	if next(args) == nil then
-		table.insert(args, vim.fn.expand("%:t"))
+	-- remove given files
+	local filenames = split_at(..., " ")
+	if next(filenames) == nil then
+		table.insert(filenames, vim.fn.expand("%:t"))
 	end
-	for _, filename in ipairs(args) do
+	for _, filename in ipairs(filenames) do
 		local ampy_assembled_command = string.format(
 			"ampy -p %s -b %s rm %s 2>&1",
 			port,
 			baud_rate,
 			filename
 		)
-		if debug_mode then
-			print(ampy_assembled_command)
-		else
-			local output = io.popen(ampy_assembled_command)
-			if not output then
-				print("Error something went wrong with " .. ampy_assembled_command)
-				return
-			end
-			for line in output:lines() do print(line) end
-		end
+		run_bash_command(ampy_assembled_command)
 	end
 end
 
@@ -171,12 +168,13 @@ _G.ampy_upload_all = function()
 		return
 	end
 	for filename in directory_contents:lines() do
-		ampy_upload_one(filename)
+		ampy_upload_one(project_dir .. "/" .. filename)
 	end
 end
 
 _G.ampy_run_target = function(filename)
 	-- set entry point and run
+	-- filename without .py fileextension
 	if filename == nil or filename == "" then
 		filename = "main"
 	end
@@ -187,6 +185,7 @@ end
 _G.ampy_run_host = function(filename)
 	print(filename)
 	-- local filename = next(filename)
+	local path
 	if filename == nil or filename == "" then
 		path = vim.fn.expand("%:p")
 	else
@@ -197,11 +196,13 @@ _G.ampy_run_host = function(filename)
 end
 
 _G.ampy_upload_files = function(...)
-	local args = split_at(..., " ")
-	if next(args) == nil then
+	local filenames = split_at(..., " ")
+	if next(filenames) == nil then
+		print("in upload current")
 		ampy_upload_one(vim.fn.expand("%:p"))
 	else
-		for _, filename in ipairs(args) do
+		print("in upload list of files")
+		for _, filename in ipairs(filenames) do
 			ampy_upload_one(project_dir .. "/" .. filename)
 		end
 	end
@@ -229,7 +230,7 @@ vim.cmd([[command! -nargs=* AmpyRun lua ampy_run_host("<args>")]])
 vim.cmd([[command! -nargs=* AmpyRunTarget lua ampy_run_target("<args>")]])
 
 -- toggle modes
-vim.cmd([[command! -nargs=1 AmpyToggleTerminal lua AmpyUseTerminal=<f-args>]])
+-- vim.cmd([[command! -nargs=1 AmpyToggleTerminal lua AmpyUseTerminal=<f-args>]])
 vim.cmd([[command! -nargs=1 AmpyToggleAutoUpload lua AmpyAutoUpload=<f-args>]])
 
 -- autoupload
