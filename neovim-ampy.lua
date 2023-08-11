@@ -1,10 +1,10 @@
 -- config
 local port = ("/dev/ttyUSB0")                                            -- port where the device is mounted, use ls /dev/tty*
 local baud_rate = 115200
-local project_dir = vim.fn.expand("~/Desktop/robo/robo_esp")             -- python project dir
+local project_dir = vim.fn.expand("~/Desktop/robo/robo_esp")        -- python project dir
 local own_dir = vim.fn.expand("~/.config/nvim/lua/ranastra/neovim-ampy") -- dir of the ampy plugin
 -- _G.AmpyUseTerminal = ("true")                                            -- toggle if terminal is opened for runing a python file
-local debug_mode = true                                                  -- toggle to show ampy commands instead of running them
+local debug_mode = false                                                 -- toggle to show ampy commands instead of running them
 _G.AmpyAutoUpload = ("false")                                            -- toggle auto upload on save
 local sudo_password = nil                                                -- dont set that .....
 local password_mode = 2                                                  -- 1 ask for sudo password eveytime, 2 ask for password once per start of nvim, 3 specify password in this file

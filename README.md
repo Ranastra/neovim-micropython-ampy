@@ -14,7 +14,12 @@ It provides commands to upload/run/erase files from a project directory to a mic
 ~~- AmpyToggleTerminal true|false    : toggle if terminal is opened when python file is run with ampy~~
 - AmpyToggleAutoUpload true|false  : toggle if pyton file is automatically uploaded when it is saved
 
+# Requirements
+- adafruit-ampy
+- jq for reading the pymakr.conf file
+
 # Configuration
+- bash_run.sh needs to be executable ... thats where the ampy command is written to
 - port
 - baud rate
 - project_dir (directory where all micropython files are kept)

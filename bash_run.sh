@@ -1,1 +1,1 @@
-pacman -Syu
+ampy -p /dev/ttyUSB0 -b 115200 run /home/ranastra/Desktop/robo/robo_esp_test/boot.py
